@@ -18,8 +18,10 @@ export function validateWorkspace(value) {
   }
   return value;
 }
-export const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
+const htmlEscapes = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};
+export const escapeHtml = value => String(value).replace(/[&<>"']/g, char => htmlEscapes[char]);
 const href = (workspace, action) => `https://freetwai.com/#guilds/${workspace.guild_key}/${action}`;
+const actionLabels = {skills: '開啟技能書', tools: '查看可用工具', work: '開啟我的工作', information: '閱讀公會資訊'};
 export function renderWorkspace(workspace) {
   validateWorkspace(workspace);
   const e = escapeHtml;
@@ -30,7 +32,7 @@ export function renderWorkspace(workspace) {
 <body><main id="workspace"><header class="standalone-header"><a href="https://freetwai.com/" aria-label="自由工坊"><img src="./brand.png" width="132" height="44" alt="自由工坊"></a><span>${e(workspace.name)}</span></header>
 <section class="intro"><p class="eyebrow">從想法到成果</p><h1>${e(workspace.headline)}</h1><p class="purpose">${e(workspace.purpose)}</p>
 <div class="actions"><a class="button primary" data-action="work" href="${href(workspace, 'work')}">進入工作區 <span aria-hidden="true">↗</span></a><a class="button secondary" data-action="skills" href="${href(workspace, 'skills')}">閱讀技能書</a></div></section>
-<ol class="journey" aria-label="公會實作流程">${workspace.steps.map((step, index) => `<li><span class="step-number" aria-hidden="true">0${index + 1}</span><h2>${e(step.title)}</h2><p>${e(step.detail)}</p><a data-action="${step.action}" href="${href(workspace, step.action)}">${({skills: '開啟技能書', tools: '查看可用工具', work: '開啟我的工作', information: '閱讀公會資訊'})[step.action]} <span aria-hidden="true">→</span></a></li>`).join('')}</ol>
+<ol class="journey" aria-label="公會實作流程">${workspace.steps.map((step, index) => `<li><span class="step-number" aria-hidden="true">0${index + 1}</span><h2>${e(step.title)}</h2><p>${e(step.detail)}</p><a data-action="${step.action}" href="${href(workspace, step.action)}">${actionLabels[step.action]} <span aria-hidden="true">→</span></a></li>`).join('')}</ol>
 <aside class="outcome"><span class="outcome-icon" aria-hidden="true">✦</span><div><p class="eyebrow">這次留下的成果</p><p>${e(workspace.outcome)}</p></div></aside>
 <footer class="standalone-footer"><a href="https://github.com/${workspace.repository}">參與編修</a><span id="release"></span></footer></main></body></html>`;
 }
@@ -41,12 +43,15 @@ export async function build(root = process.cwd(), sourceSha) {
   const output = resolve(root, 'dist');
   await mkdir(output, {recursive: true});
   const serialized = JSON.stringify(workspace).replaceAll('<', '\\u003c').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
-  await writeFile(resolve(output, 'index.html'), renderWorkspace(workspace));
-  await writeFile(resolve(output, 'site.js'), `const workspace = ${serialized};\nconst sourceSha = ${JSON.stringify(sha)};\n` + await readFile(resolve(root, 'src/site.js'), 'utf8'));
-  await copyFile(resolve(root, 'src/style.css'), resolve(output, 'style.css'));
-  await copyFile(resolve(root, 'brand.png'), resolve(output, 'brand.png'));
-  await writeFile(resolve(output, '.nojekyll'), '');
-  await writeFile(resolve(output, 'release.json'), JSON.stringify({schema_version: 'freedom.guild-release/v1', guild_key: workspace.guild_key, repository: workspace.repository, source_sha: sha, bridge: 'freedom.guild-launchpad/v1'}) + '\n');
+  const siteJsContent = `const workspace = ${serialized};\nconst sourceSha = ${JSON.stringify(sha)};\n` + await readFile(resolve(root, 'src/site.js'), 'utf8');
+  await Promise.all([
+    writeFile(resolve(output, 'index.html'), renderWorkspace(workspace)),
+    writeFile(resolve(output, 'site.js'), siteJsContent),
+    copyFile(resolve(root, 'src/style.css'), resolve(output, 'style.css')),
+    copyFile(resolve(root, 'brand.png'), resolve(output, 'brand.png')),
+    writeFile(resolve(output, '.nojekyll'), ''),
+    writeFile(resolve(output, 'release.json'), JSON.stringify({schema_version: 'freedom.guild-release/v1', guild_key: workspace.guild_key, repository: workspace.repository, source_sha: sha, bridge: 'freedom.guild-launchpad/v1'}) + '\n')
+  ]);
   return output;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
